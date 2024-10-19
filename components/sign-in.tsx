@@ -9,7 +9,6 @@ export function SignInButton() {
   const handleSignIn = async () => {
     await signIn.social({
       provider: "google",
-      callbackURL: "/",
     });
   };
 
