@@ -22,6 +22,7 @@
     "drizzle-orm": "^0.35.1",
     "flubber": "^0.4.2",
     "framer-motion": "^11.11.9",
+    "googleapis": "^144.0.0",
     "groq-sdk": "^0.7.0",
     "lodash-es": "^4.17.21",
     "lucide-react": "^0.453.0",
