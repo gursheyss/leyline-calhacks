@@ -22,8 +22,6 @@ export const metadata: Metadata = {
   title: "leyline",
 };
 
-export const experimental_ppr = true;
-
 export default async function RootLayout({
   children,
 }: Readonly<{
