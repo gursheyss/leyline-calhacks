@@ -6,7 +6,7 @@ import Image from "next/image";
 import localFont from "next/font/local";
 import background from "../public/background.webp";
 import { ThemeProvider } from "@/components/theme-provider";
-import { SignInButton } from "@/components/sign-in";
+import SignInButton from "@/components/sign-in";
 
 const bricolageGrotesque = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 
 export const experimental_ppr = true;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;

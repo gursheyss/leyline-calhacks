@@ -1,42 +1,34 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  text,
+  varchar,
+  timestamp,
+  jsonb,
+  integer,
+} from "drizzle-orm/pg-core";
 
-export const user = pgTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("emailVerified").notNull(),
-  image: text("image"),
-  createdAt: timestamp("createdAt").notNull(),
-  updatedAt: timestamp("updatedAt").notNull(),
+export const emails = pgTable("emails", {
+  id: varchar("id").primaryKey(),
+  snippet: text("snippet"),
+  internalDate: timestamp("internal_date"),
 });
 
-export const session = pgTable("session", {
-  id: text("id").primaryKey(),
-  expiresAt: timestamp("expiresAt").notNull(),
-  ipAddress: text("ipAddress"),
-  userAgent: text("userAgent"),
-  userId: text("userId")
-    .notNull()
-    .references(() => user.id),
+export const emailPayloads = pgTable("email_payloads", {
+  id: serial("id").primaryKey(),
+  emailId: varchar("email_id").references(() => emails.id),
+  partId: varchar("part_id"),
+  mimeType: varchar("mime_type"),
+  filename: varchar("filename"),
+  headers: jsonb("headers"),
+  body: jsonb("body"),
 });
 
-export const account = pgTable("account", {
-  id: text("id").primaryKey(),
-  accountId: text("accountId").notNull(),
-  providerId: text("providerId").notNull(),
-  userId: text("userId")
-    .notNull()
-    .references(() => user.id),
-  accessToken: text("accessToken"),
-  refreshToken: text("refreshToken"),
-  idToken: text("idToken"),
-  expiresAt: timestamp("expiresAt"),
-  password: text("password"),
-});
-
-export const verification = pgTable("verification", {
-  id: text("id").primaryKey(),
-  identifier: text("identifier").notNull(),
-  value: text("value").notNull(),
-  expiresAt: timestamp("expiresAt").notNull(),
+export const emailAttachments = pgTable("email_attachments", {
+  id: serial("id").primaryKey(),
+  emailId: varchar("email_id").references(() => emails.id),
+  attachmentId: varchar("attachment_id"),
+  filename: varchar("filename"),
+  mimeType: varchar("mime_type"),
+  size: integer("size"),
 });
