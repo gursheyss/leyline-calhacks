@@ -17,9 +17,26 @@ const Email = ({
   id,
 }: typeof emails.$inferSelect) => {
   const router = useRouter();
-  const formatDate = (date: Date | null) => {
+
+  const formatDate = (date: Date | string | null) => {
     if (!date) return "Unknown date";
-    return date.toLocaleString();
+
+    let dateObject: Date;
+    if (typeof date === "string") {
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(date)) {
+        dateObject = new Date(date + "Z");
+      } else {
+        dateObject = new Date(date);
+      }
+    } else {
+      dateObject = date;
+    }
+
+    if (isNaN(dateObject.getTime())) {
+      return "Invalid date";
+    }
+
+    return dateObject.toLocaleString();
   };
 
   const getStatusIcon = () => {
@@ -58,23 +75,27 @@ const Email = ({
       )}
       onClick={() => router.push(`/email/${id}`)}
     >
-      <div className="flex flex-row items-center gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl",
-            getStatusBackground()
-          )}
-        >
-          {getStatusIcon()}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-row items-center gap-3">
+          <div
+            className={cn(
+              "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl",
+              getStatusBackground()
+            )}
+          >
+            {getStatusIcon()}
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <figcaption className="flex flex-row items-center whitespace-pre text-lg font-medium dark:text-white">
+              <span className="text-sm sm:text-lg">{sender}</span>
+              <span className="mx-1">·</span>
+              <span className="text-xs text-gray-500">
+                {formatDate(internalDate)}
+              </span>
+            </figcaption>
+          </div>
         </div>
-        <div className="flex flex-col overflow-hidden">
-          <figcaption className="flex flex-row items-center whitespace-pre text-lg font-medium dark:text-white">
-            <span className="text-sm sm:text-lg">{sender}</span>
-            <span className="mx-1">·</span>
-            <span className="text-xs text-gray-500">
-              {formatDate(internalDate)}
-            </span>
-          </figcaption>
+        <div className="flex flex-col">
           <p className="text-sm font-medium dark:text-white">{subject}</p>
           <p className="text-sm font-normal text-gray-600 dark:text-white/60">
             {snippet}
@@ -110,6 +131,13 @@ export function EmailList({
           if (payload.eventType === "INSERT") {
             const newEmail = payload.new as typeof emails.$inferSelect;
             setEmailData((prevEmails) => [newEmail, ...prevEmails]);
+          } else if (payload.eventType === "UPDATE") {
+            const updatedEmail = payload.new as typeof emails.$inferSelect;
+            setEmailData((prevEmails) =>
+              prevEmails.map((email) =>
+                email.id === updatedEmail.id ? updatedEmail : email
+              )
+            );
           }
         }
       )

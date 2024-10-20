@@ -36,6 +36,34 @@
       "when": 1729387929741,
       "tag": "0004_productive_omega_red",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1729402922979,
+      "tag": "0005_high_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1729403095257,
+      "tag": "0006_narrow_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1729413368657,
+      "tag": "0007_light_marrow",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1729416568482,
+      "tag": "0008_minor_stature",
+      "breakpoints": true
     }
   ]
 }

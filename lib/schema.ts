@@ -7,6 +7,7 @@ import {
   jsonb,
   integer,
   pgEnum,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -16,13 +17,22 @@ export const emailStatusEnum = pgEnum("email_status", [
   "done",
 ]);
 
+export const profiles = pgTable("profiles", {
+  id: uuid().notNull().primaryKey(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  userData: jsonb("user_data"),
+});
+
 export const emails = pgTable("emails", {
   id: varchar("id").primaryKey(),
   snippet: text("snippet"),
   internalDate: timestamp("internal_date"),
   sender: text("sender"),
   subject: text("subject"),
+  messageText: text("message_text"),
   status: emailStatusEnum("status").default("stale"),
+  summary: text("summary"),
 });
 
 export const emailPayloads = pgTable("email_payloads", {
@@ -45,9 +55,18 @@ export const emailAttachments = pgTable("email_attachments", {
   data: text("data"),
 });
 
+export const emailActions = pgTable("email_actions", {
+  id: serial("id").primaryKey(),
+  emailId: varchar("email_id")
+    .references(() => emails.id)
+    .unique(),
+  action: text("action").array(),
+});
+
 export const emailsRelations = relations(emails, ({ many }) => ({
   payloads: many(emailPayloads),
   attachments: many(emailAttachments),
+  actions: many(emailActions),
 }));
 
 export const emailPayloadsRelations = relations(emailPayloads, ({ one }) => ({
@@ -66,3 +85,10 @@ export const emailAttachmentsRelations = relations(
     }),
   })
 );
+
+export const emailActionsRelations = relations(emailActions, ({ one }) => ({
+  email: one(emails, {
+    fields: [emailActions.emailId],
+    references: [emails.id],
+  }),
+}));

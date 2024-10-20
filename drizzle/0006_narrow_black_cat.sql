@@ -1,0 +1,1 @@
+ALTER TABLE "email_actions" ADD CONSTRAINT "email_actions_email_id_unique" UNIQUE("email_id");
