@@ -214,6 +214,8 @@ const determineCOA = async (
       `,
     });
 
+    const processedAttachments: string[] = [];
+
     await generateText({
       model: groq("llama-3.1-70b-versatile"),
       tools: {
@@ -227,7 +229,7 @@ const determineCOA = async (
               .array(z.string())
               .describe("List of form fields to fill out"),
           }),
-          execute: async ({ attachmentId }) => {
+          execute: async ({ attachmentId, formFields }) => {
             const attachment = attachments.find(
               (a) => a.attachmentId === attachmentId
             );
@@ -258,37 +260,66 @@ const determineCOA = async (
                   return { name: field.getName() };
                 });
 
-                const fieldMappings = await generateObject({
-                  model: groq("llama-3.1-8b-instant"),
-                  schema: z.object({
-                    mappings: z.record(z.string(), z.string()),
-                  }),
-                  system:
-                    "You are an expert at mapping user data to form fields.",
-                  prompt: `
-                    Given the following user data and form fields, create a mapping of form field names to user data properties.
-                    Use the most appropriate user data for each form field.
-                    
-                    This is the user data you are supposed to map: ${JSON.stringify(
-                      userData[0]
-                    )}
-                    
-                    These are the form fields you are supposed to map to, including their maximum lengths where applicable: 
-                    ${JSON.stringify(fieldInfo)}
+                let fieldMappings;
+                try {
+                  fieldMappings = await generateObject({
+                    model: groq("llama-3.1-8b-instant"),
+                    schema: z.object({
+                      mappings: z.record(z.string(), z.string()),
+                    }),
+                    system:
+                      "You are an expert at mapping user data to form fields.",
+                    prompt: `
+                      Given the following user data and form fields, create a mapping of form field names to user data properties.
+                      Use the most appropriate user data for each form field.
+                      
+                      This is the user data you are supposed to map: ${JSON.stringify(
+                        userData[0]
+                      )}
+                      
+                      These are the form fields you are supposed to map to, including their maximum lengths where applicable: 
+                      ${JSON.stringify(fieldInfo)}
 
-                    Your job is to construct and return a JSON object where the keys are from the form fields and the values are the mappings from the user data.
-                    Take into account the maximum length constraints when suggesting mappings.
+                      These are the specific form fields requested to be filled: ${JSON.stringify(
+                        formFields
+                      )}
 
-                    For any information that is not available in the user data, leave it blank.
-                  `,
-                });
+                      Your job is to construct and return a JSON object where the keys are from the form fields and the values are the mappings from the user data.
+                      Take into account the maximum length constraints when suggesting mappings.
+                      Only include mappings for the requested form fields.
+                      IMPORTANT!: You must not generate new form fields that are not in the list of requested form fields.
 
-                if (!fieldMappings.object) {
-                  throw new Error("Failed to generate field mappings");
+                      For any information that is not available in the user data, use the string "MISSING_DATA" as the value.
+
+                      Return the result in this exact format:
+                      {
+                        "mappings": {
+                          "fieldName1": "userDataProperty1",
+                          "fieldName2": "userDataProperty2",
+                          // ... and so on
+                        }
+                      }
+                    `,
+                  });
+                } catch (error) {
+                  console.error("Error generating field mappings:", error);
+                  fieldMappings = {
+                    object: {
+                      mappings: Object.fromEntries(
+                        formFields.map((field) => [field, "MISSING_DATA"])
+                      ),
+                    },
+                  };
+                }
+
+                if (!fieldMappings.object || !fieldMappings.object.mappings) {
+                  throw new Error("Failed to generate valid field mappings");
                 }
 
                 console.log("field mappings", fieldMappings.object.mappings);
                 console.log("user data", userData[0]);
+
+                const missingFields: string[] = [];
 
                 for (const [fieldName, userDataProp] of Object.entries(
                   fieldMappings.object.mappings
@@ -297,7 +328,13 @@ const determineCOA = async (
                   if (field instanceof PDFTextField) {
                     const maxLength = field.getMaxLength();
                     let value =
-                      userData[0].userData[userDataProp as string] || "";
+                      userDataProp === "MISSING_DATA"
+                        ? ""
+                        : userData[0].userData[userDataProp as string] || "";
+
+                    if (userDataProp === "MISSING_DATA") {
+                      missingFields.push(fieldName);
+                    }
 
                     if (maxLength !== undefined && value.length > maxLength) {
                       value = value.substring(0, maxLength);
@@ -335,7 +372,15 @@ const determineCOA = async (
                 } = supabaseClient.storage.from("forms").getPublicUrl(fileName);
 
                 console.log("Filled form public URL:", publicUrl);
-                return `Form filled and saved. URL: ${publicUrl}`;
+                processedAttachments.push(publicUrl);
+
+                let response = `Form filled and saved. URL: ${publicUrl}`;
+                if (missingFields.length > 0) {
+                  response += `\nMissing information for fields: ${missingFields.join(
+                    ", "
+                  )}`;
+                }
+                return response;
               } catch (error) {
                 console.error("Error processing PDF attachment:", error);
                 return `Error processing PDF attachment: ${error.message}`;
@@ -346,10 +391,11 @@ const determineCOA = async (
           },
         }),
       },
-      maxSteps: 2,
+      maxSteps: 3,
       system: `
       You are an email assistant that decides which action to take based on the email content.
-      If the email content contains a form, or contains a file that references a form or needing to fill it out, use the fillOutForm tool.
+      If the email content mentions or implies the need to fill out a form, even if specific fields aren't listed, use the fillOutForm tool.
+      When using the fillOutForm tool, infer the likely form fields based on the context of the email and the attachment type.
       If no specific action is needed or if there's no valid tool to call, strictly return a brief description of why no action is needed.
       Never use brave_search or the internet.
       `,
@@ -360,7 +406,10 @@ const determineCOA = async (
         .map((a) => `${a.filename} (ID: ${a.attachmentId})`)
         .join(", ")}
       From this email, determine which action to take.
+      If there's a form to fill out, use the fillOutForm tool. Infer the likely form fields based on the email content and common fields for the type of form mentioned or attached.
+      For the formFields parameter, provide a list of likely fields even if they're not explicitly mentioned in the email.
       If the email doesn't need any specific action or if there's no valid tool to call, provide a brief explanation of why no action is needed.
+      If the response says there are fields missing, make sure to include that in the response, telling the user what fields are missing.
       `,
       toolChoice: "auto",
       async onStepFinish({ text }) {
@@ -384,6 +433,7 @@ const determineCOA = async (
       .set({
         status: "done",
         summary: summaryResult.text,
+        processedAttachments: processedAttachments,
       })
       .where(eq(emails.id, id));
   } catch (error) {

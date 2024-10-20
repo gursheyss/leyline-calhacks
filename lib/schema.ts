@@ -34,6 +34,7 @@ export const emails = pgTable("emails", {
   messageText: text("message_text"),
   status: emailStatusEnum("status").default("stale"),
   summary: text("summary"),
+  processedAttachments: text("processed_attachments").array(),
 });
 
 export const emailPayloads = pgTable("email_payloads", {
