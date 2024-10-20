@@ -22,6 +22,7 @@ export const profiles = pgTable("profiles", {
   firstName: text("first_name"),
   lastName: text("last_name"),
   userData: jsonb("user_data"),
+  email: text("email").unique(),
 });
 
 export const emails = pgTable("emails", {

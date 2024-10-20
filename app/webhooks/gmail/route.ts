@@ -5,12 +5,14 @@ import {
   emailPayloads,
   emailAttachments,
   emailActions,
+  profiles,
 } from "@/lib/schema";
 import { groq } from "@ai-sdk/groq";
-import { generateText, tool } from "ai";
+import { generateObject, generateText, tool } from "ai";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFTextField } from "pdf-lib";
+import { createClient } from "@/utils/supabase/server";
 
 export const POST = async () => {
   const oauth2Client = new google.auth.OAuth2(
@@ -161,6 +163,11 @@ const determineCOA = async (
   const subject =
     payload.headers?.find((header) => header.name === "Subject")?.value || "";
 
+  const receiverHeader =
+    payload.headers?.find((header) => header.name === "To")?.value || "";
+  const receiverEmail =
+    receiverHeader.match(/[^<\s]+(?=>)/)?.[0] || receiverHeader;
+
   const extractText = (part: gmail_v1.Schema$MessagePart): string => {
     if (part.mimeType === "text/plain" && part.body?.data) {
       return Buffer.from(part.body.data, "base64").toString("utf-8");
@@ -195,7 +202,7 @@ const determineCOA = async (
       model: groq("llama-3.1-70b-versatile"),
       system: `
       You are an email summarizer. Your task is to provide a concise summary of the email content in 1-2 sentences.
-      Focus on the main points and key information in the email.
+      Focus on the main points, key information, and especially any action points or required responses in the email.
       `,
       prompt: `
       Email subject: ${subject}
@@ -203,7 +210,7 @@ const determineCOA = async (
       Attachments: ${attachments
         .map((a) => `${a.filename} (ID: ${a.attachmentId})`)
         .join(", ")}
-      Please provide a concise summary of this email in 1-2 sentences.
+      Please provide a concise summary of this email in 1-2 sentences, highlighting any action points or required responses.
       `,
     });
 
@@ -220,25 +227,116 @@ const determineCOA = async (
               .array(z.string())
               .describe("List of form fields to fill out"),
           }),
-          execute: async ({ attachmentId, formFields }) => {
+          execute: async ({ attachmentId }) => {
             const attachment = attachments.find(
               (a) => a.attachmentId === attachmentId
             );
 
             if (attachment && attachment.mimeType === "application/pdf") {
               try {
+                console.log("Trying to fill form");
+                const userData = await db
+                  .select({
+                    userData: profiles.userData,
+                  })
+                  .from(profiles)
+                  .where(eq(profiles.email, receiverEmail));
+
                 const pdfBuffer = Buffer.from(attachment.data, "base64");
                 const pdfDoc = await PDFDocument.load(pdfBuffer);
 
                 const form = pdfDoc.getForm();
                 const fields = form.getFields();
 
-                const extractedFields = fields.map((field) => field.getName());
+                const fieldInfo = fields.map((field) => {
+                  if (field instanceof PDFTextField) {
+                    return {
+                      name: field.getName(),
+                      maxLength: field.getMaxLength(),
+                    };
+                  }
+                  return { name: field.getName() };
+                });
 
-                return `Extracted fields: ${extractedFields.join(", ")}`;
+                const fieldMappings = await generateObject({
+                  model: groq("llama-3.1-8b-instant"),
+                  schema: z.object({
+                    mappings: z.record(z.string(), z.string()),
+                  }),
+                  system:
+                    "You are an expert at mapping user data to form fields.",
+                  prompt: `
+                    Given the following user data and form fields, create a mapping of form field names to user data properties.
+                    Use the most appropriate user data for each form field.
+                    
+                    This is the user data you are supposed to map: ${JSON.stringify(
+                      userData[0]
+                    )}
+                    
+                    These are the form fields you are supposed to map to, including their maximum lengths where applicable: 
+                    ${JSON.stringify(fieldInfo)}
+
+                    Your job is to construct and return a JSON object where the keys are from the form fields and the values are the mappings from the user data.
+                    Take into account the maximum length constraints when suggesting mappings.
+                  `,
+                });
+
+                if (!fieldMappings.object) {
+                  throw new Error("Failed to generate field mappings");
+                }
+
+                console.log("field mappings", fieldMappings.object.mappings);
+                console.log("user data", userData[0]);
+
+                for (const [fieldName, userDataProp] of Object.entries(
+                  fieldMappings.object.mappings
+                )) {
+                  const field = form.getField(fieldName);
+                  if (field instanceof PDFTextField) {
+                    const maxLength = field.getMaxLength();
+                    let value =
+                      userData[0].userData[userDataProp as string] || "";
+
+                    if (maxLength !== undefined && value.length > maxLength) {
+                      value = value.substring(0, maxLength);
+                    }
+
+                    field.setText(value);
+                  }
+                }
+
+                console.log("Saving filled PDF");
+                const pdfBytes = await pdfDoc.save();
+                const fileName = `filled_${attachment.filename}`;
+
+                console.log("Creating Supabase client");
+                const supabaseClient = createClient();
+
+                console.log("Uploading to Supabase");
+                const { data, error } = await supabaseClient.storage
+                  .from("forms")
+                  .upload(fileName, pdfBytes, {
+                    contentType: "application/pdf",
+                    upsert: true,
+                  });
+
+                if (error) {
+                  console.error("Error uploading to Supabase:", error);
+                  return `Error saving filled form: ${error.message}`;
+                }
+
+                console.log("Upload successful, data:", data);
+
+                console.log("Getting public URL");
+                const {
+                  data: { publicUrl },
+                } = supabaseClient.storage.from("forms").getPublicUrl(fileName);
+
+                console.log("Filled form public URL:", publicUrl);
+                return `Form filled and saved. URL: ${publicUrl}`;
               } catch (error) {
-                console.error("Error parsing PDF:", error);
-                return "Error parsing PDF attachment";
+                console.error("Error processing PDF attachment:", error);
+                return `Error processing PDF attachment: ${error.message}`;
               }
             } else {
               return "Attachment not found or not a PDF";
@@ -287,8 +385,6 @@ const determineCOA = async (
       })
       .where(eq(emails.id, id));
   } catch (error) {
-    console.error("Error processing email:", error);
-
     await db
       .update(emails)
       .set({

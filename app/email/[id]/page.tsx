@@ -79,7 +79,7 @@ export default async function Page({ params }: { params: { id: string } }) {
       </div>
       <div
         className={cn(
-          "min-w-64 overflow-hidden rounded-2xl p-4",
+          "min-w-64 overflow-hidden rounded-2xl p-4 max-w-128",
           "bg-gray-100 [box-shadow:0_0_0_1px_rgba(0,0,0,.03),0_2px_4px_rgba(0,0,0,.05)]",
           "dark:bg-gray-800/50 dark:backdrop-blur-sm dark:[border:1px_solid_rgba(255,255,255,.1)]"
         )}
