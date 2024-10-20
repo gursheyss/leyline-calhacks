@@ -25,47 +25,60 @@ export const POST = async (request: Request) => {
   const messageId = res.data.messages?.[0].id;
 
   if (messageId) {
-    const messageDetails = await gmail.users.messages.get({
-      userId: "me",
-      id: messageId,
-    });
-
-    const { id, snippet, internalDate, payload } = messageDetails.data;
-
-    await db.insert(emails).values({
-      id: id as string,
-      snippet,
-      internalDate: new Date(parseInt(internalDate as string)),
-    });
-
-    if (payload) {
-      await db.insert(emailPayloads).values({
-        emailId: id,
-        partId: payload.partId || "",
-        mimeType: payload.mimeType || "",
-        filename: payload.filename || "",
-        headers: payload.headers || {},
-        body: payload.body || {},
+    try {
+      const messageDetails = await gmail.users.messages.get({
+        userId: "me",
+        id: messageId,
       });
 
-      if (payload.parts) {
-        for (const part of payload.parts) {
-          if (part.filename && part.body) {
-            await db.insert(emailAttachments).values({
-              emailId: id,
-              attachmentId: part.body.attachmentId || "",
-              filename: part.filename,
-              mimeType: part.mimeType || "",
-              size: part.body.size || 0,
-            });
+      const { id, snippet, internalDate, payload } = messageDetails.data;
+
+      await db.insert(emails).values({
+        id: id as string,
+        snippet,
+        internalDate: new Date(parseInt(internalDate as string)),
+        sender: payload?.headers?.find((header) => header.name === "From")
+          ?.value,
+      });
+
+      if (payload) {
+        await db.insert(emailPayloads).values({
+          emailId: id,
+          partId: payload.partId || "",
+          mimeType: payload.mimeType || "",
+          filename: payload.filename || "",
+          headers: payload.headers || {},
+          body: payload.body || {},
+        });
+
+        if (payload.parts) {
+          for (const part of payload.parts) {
+            if (part.filename && part.body) {
+              await db.insert(emailAttachments).values({
+                emailId: id,
+                attachmentId: part.body.attachmentId || "",
+                filename: part.filename,
+                mimeType: part.mimeType || "",
+                size: part.body.size || 0,
+              });
+            }
           }
         }
       }
-    }
 
-    console.log("Message saved successfully");
-    return Response.json({ message: "Message saved successfully" });
+      console.log("Message saved successfully");
+      return Response.json(
+        { message: "Message saved successfully" },
+        { status: 200 }
+      );
+    } catch (error) {
+      console.error("Error saving message:", error);
+      return Response.json(
+        { message: "Error processing message, but webhook received" },
+        { status: 200 }
+      );
+    }
   }
 
-  return Response.json({ message: "No new messages found" });
+  return Response.json({ message: "No new messages found" }, { status: 200 });
 };

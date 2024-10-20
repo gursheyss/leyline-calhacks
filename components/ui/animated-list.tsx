@@ -1,6 +1,6 @@
 "use client";
 
-import React, { ReactElement, useEffect, useMemo, useState } from "react";
+import React, { ReactElement } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 export interface AnimatedListProps {
@@ -10,27 +10,13 @@ export interface AnimatedListProps {
 }
 
 export const AnimatedList = React.memo(
-  ({ className, children, delay = 1000 }: AnimatedListProps) => {
-    const [index, setIndex] = useState(0);
+  ({ className, children }: AnimatedListProps) => {
     const childrenArray = React.Children.toArray(children);
-
-    useEffect(() => {
-      const interval = setInterval(() => {
-        setIndex((prevIndex) => (prevIndex + 1) % childrenArray.length);
-      }, delay);
-
-      return () => clearInterval(interval);
-    }, [childrenArray.length, delay]);
-
-    const itemsToShow = useMemo(
-      () => childrenArray.slice(0, index + 1).reverse(),
-      [index, childrenArray],
-    );
 
     return (
       <div className={`flex flex-col items-center gap-4 ${className}`}>
         <AnimatePresence>
-          {itemsToShow.map((item) => (
+          {childrenArray.map((item) => (
             <AnimatedListItem key={(item as ReactElement).key}>
               {item}
             </AnimatedListItem>
@@ -38,7 +24,7 @@ export const AnimatedList = React.memo(
         </AnimatePresence>
       </div>
     );
-  },
+  }
 );
 
 AnimatedList.displayName = "AnimatedList";

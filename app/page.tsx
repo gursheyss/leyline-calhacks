@@ -10,5 +10,5 @@ export default async function Home() {
     .orderBy(desc(emails.internalDate))
     .limit(50);
 
-  return <EmailList initialEmails={initialEmailList} />;
+  return <EmailList className="max-w-5xl" initialEmails={initialEmailList} />;
 }

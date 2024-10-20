@@ -5,11 +5,44 @@ import { cn } from "@/lib/utils";
 import { AnimatedList } from "@/components/ui/animated-list";
 import { createClient } from "@/utils/supabase/client";
 import { emails } from "@/lib/schema";
+import { Pause, Check, Loader2 } from "lucide-react";
 
-const Email = ({ snippet, internalDate }: typeof emails.$inferSelect) => {
+const Email = ({
+  snippet,
+  internalDate,
+  sender,
+  subject,
+  status,
+}: typeof emails.$inferSelect) => {
   const formatDate = (date: Date | null) => {
     if (!date) return "Unknown date";
     return date.toLocaleString();
+  };
+
+  const getStatusIcon = () => {
+    switch (status) {
+      case "stale":
+        return <Pause className="h-6 w-6 text-gray-500" />;
+      case "processing":
+        return <Loader2 className="h-6 w-6 text-white animate-spin" />;
+      case "done":
+        return <Check className="h-6 w-6 text-white" />;
+      default:
+        return <span className="text-lg">📧</span>;
+    }
+  };
+
+  const getStatusBackground = () => {
+    switch (status) {
+      case "stale":
+        return "bg-gray-200";
+      case "processing":
+        return "bg-blue-500";
+      case "done":
+        return "bg-green-500";
+      default:
+        return "bg-blue-500";
+    }
   };
 
   return (
@@ -22,18 +55,26 @@ const Email = ({ snippet, internalDate }: typeof emails.$inferSelect) => {
       )}
     >
       <div className="flex flex-row items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-2xl bg-blue-500">
-          <span className="text-lg">📧</span>
+        <div
+          className={cn(
+            "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl",
+            getStatusBackground()
+          )}
+        >
+          {getStatusIcon()}
         </div>
         <div className="flex flex-col overflow-hidden">
           <figcaption className="flex flex-row items-center whitespace-pre text-lg font-medium dark:text-white">
-            <span className="text-sm sm:text-lg">Email</span>
+            <span className="text-sm sm:text-lg">{sender}</span>
             <span className="mx-1">·</span>
             <span className="text-xs text-gray-500">
               {formatDate(internalDate)}
             </span>
           </figcaption>
-          <p className="text-sm font-normal dark:text-white/60">{snippet}</p>
+          <p className="text-sm font-medium dark:text-white">{subject}</p>
+          <p className="text-sm font-normal text-gray-600 dark:text-white/60">
+            {snippet}
+          </p>
         </div>
       </div>
     </figure>
@@ -47,15 +88,11 @@ export function EmailList({
   initialEmails: (typeof emails.$inferSelect)[];
   className?: string;
 }) {
-  const [emailData, setEmailData] = useState<(typeof emails.$inferSelect)[]>(
-    []
-  );
+  const [emailData, setEmailData] =
+    useState<(typeof emails.$inferSelect)[]>(initialEmails);
   const supabase = createClient();
 
   useEffect(() => {
-    // Set initial emails only once
-    setEmailData(initialEmails);
-
     const subscription = supabase
       .channel("emails_channel")
       .on(
@@ -77,7 +114,7 @@ export function EmailList({
     return () => {
       subscription.unsubscribe();
     };
-  }, [initialEmails]);
+  }, []);
 
   return (
     <AnimatedList className={className}>

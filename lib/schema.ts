@@ -6,12 +6,22 @@ import {
   timestamp,
   jsonb,
   integer,
+  pgEnum,
 } from "drizzle-orm/pg-core";
+
+export const emailStatusEnum = pgEnum("email_status", [
+  "stale",
+  "processing",
+  "done",
+]);
 
 export const emails = pgTable("emails", {
   id: varchar("id").primaryKey(),
   snippet: text("snippet"),
   internalDate: timestamp("internal_date"),
+  sender: text("sender"),
+  subject: text("subject"),
+  status: emailStatusEnum("status").default("stale"),
 });
 
 export const emailPayloads = pgTable("email_payloads", {
