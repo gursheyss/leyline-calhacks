@@ -278,6 +278,8 @@ const determineCOA = async (
 
                     Your job is to construct and return a JSON object where the keys are from the form fields and the values are the mappings from the user data.
                     Take into account the maximum length constraints when suggesting mappings.
+
+                    For any information that is not available in the user data, leave it blank.
                   `,
                 });
 
