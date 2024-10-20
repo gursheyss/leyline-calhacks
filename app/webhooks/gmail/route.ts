@@ -1,6 +1,8 @@
-import { google } from "googleapis";
+import { gmail_v1, google } from "googleapis";
 import { db } from "@/lib/db";
 import { emails, emailPayloads, emailAttachments } from "@/lib/schema";
+import { groq } from "@ai-sdk/groq";
+import { generateText } from "ai";
 
 export const POST = async (request: Request) => {
   const { message } = await request.json();
@@ -10,10 +12,29 @@ export const POST = async (request: Request) => {
 
   console.log("Parsed data:", parsedData);
 
-  const oauth2Client = new google.auth.OAuth2();
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+
   oauth2Client.setCredentials({
-    access_token: process.env.GOOGLE_AUTH_TOKEN,
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
   });
+
+  try {
+    const { token } = await oauth2Client.getAccessToken();
+    if (!token) {
+      throw new Error("Failed to obtain access token");
+    }
+    oauth2Client.setCredentials({ access_token: token });
+  } catch (error) {
+    console.error("Error refreshing access token:", error);
+    return Response.json(
+      { message: "Error refreshing access token" },
+      { status: 500 }
+    );
+  }
 
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
@@ -54,12 +75,39 @@ export const POST = async (request: Request) => {
         if (payload.parts) {
           for (const part of payload.parts) {
             if (part.filename && part.body) {
+              let attachmentData = part.body.data || "";
+
+              if (part.body.attachmentId) {
+                try {
+                  const attachment = await gmail.users.messages.attachments.get(
+                    {
+                      userId: "me",
+                      messageId: id as string,
+                      id: part.body.attachmentId,
+                    }
+                  );
+
+                  if (
+                    attachment.data &&
+                    typeof attachment.data.data === "string"
+                  ) {
+                    attachmentData = attachment.data.data;
+                  }
+                } catch (error) {
+                  console.error(
+                    `Error fetching attachment ${part.filename}:`,
+                    error
+                  );
+                }
+              }
+
               await db.insert(emailAttachments).values({
-                emailId: id,
+                emailId: id as string,
                 attachmentId: part.body.attachmentId || "",
                 filename: part.filename,
                 mimeType: part.mimeType || "",
                 size: part.body.size || 0,
+                data: attachmentData,
               });
             }
           }

@@ -6,6 +6,7 @@ import { AnimatedList } from "@/components/ui/animated-list";
 import { createClient } from "@/utils/supabase/client";
 import { emails } from "@/lib/schema";
 import { Pause, Check, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const Email = ({
   snippet,
@@ -13,7 +14,9 @@ const Email = ({
   sender,
   subject,
   status,
+  id,
 }: typeof emails.$inferSelect) => {
+  const router = useRouter();
   const formatDate = (date: Date | null) => {
     if (!date) return "Unknown date";
     return date.toLocaleString();
@@ -63,7 +66,10 @@ const Email = ({
         >
           {getStatusIcon()}
         </div>
-        <div className="flex flex-col overflow-hidden">
+        <div
+          className="flex flex-col overflow-hidden"
+          onClick={() => router.push(`/email/${id}`)}
+        >
           <figcaption className="flex flex-row items-center whitespace-pre text-lg font-medium dark:text-white">
             <span className="text-sm sm:text-lg">{sender}</span>
             <span className="mx-1">·</span>

@@ -8,6 +8,7 @@ import {
   integer,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 export const emailStatusEnum = pgEnum("email_status", [
   "stale",
@@ -41,4 +42,27 @@ export const emailAttachments = pgTable("email_attachments", {
   filename: varchar("filename"),
   mimeType: varchar("mime_type"),
   size: integer("size"),
+  data: text("data"),
 });
+
+export const emailsRelations = relations(emails, ({ many }) => ({
+  payloads: many(emailPayloads),
+  attachments: many(emailAttachments),
+}));
+
+export const emailPayloadsRelations = relations(emailPayloads, ({ one }) => ({
+  email: one(emails, {
+    fields: [emailPayloads.emailId],
+    references: [emails.id],
+  }),
+}));
+
+export const emailAttachmentsRelations = relations(
+  emailAttachments,
+  ({ one }) => ({
+    email: one(emails, {
+      fields: [emailAttachments.emailId],
+      references: [emails.id],
+    }),
+  })
+);
