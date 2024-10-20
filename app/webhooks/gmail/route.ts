@@ -2,7 +2,8 @@ import { gmail_v1, google } from "googleapis";
 import { db } from "@/lib/db";
 import { emails, emailPayloads, emailAttachments } from "@/lib/schema";
 import { groq } from "@ai-sdk/groq";
-import { generateText } from "ai";
+import { generateText, tool } from "ai";
+import { z } from "zod";
 
 export const POST = async (request: Request) => {
   const { message } = await request.json();
@@ -114,6 +115,10 @@ export const POST = async (request: Request) => {
         }
       }
 
+      if (payload) {
+        await determineCOA(payload);
+      }
+
       console.log("Message saved successfully");
       return Response.json(
         { message: "Message saved successfully" },
@@ -129,4 +134,56 @@ export const POST = async (request: Request) => {
   }
 
   return Response.json({ message: "No new messages found" }, { status: 200 });
+};
+
+const determineCOA = async (payload: gmail_v1.Schema$MessagePart) => {
+  const subject =
+    payload.headers?.find((header) => header.name === "Subject")?.value || "";
+  const messageText = payload.body?.data
+    ? Buffer.from(payload.body.data, "base64").toString("utf-8")
+    : "";
+
+  const attachments =
+    payload.parts
+      ?.filter((part) => part.filename && part.body)
+      .map((part) => ({
+        filename: part.filename || "",
+        mimeType: part.mimeType || "",
+        data: part.body?.data || "",
+      })) || [];
+
+  const { text } = await generateText({
+    model: groq("llama-3.1-70b-versatile"),
+    tools: {
+      fillOutForm: tool({
+        description: "Fill out a form based on an email attachment",
+        parameters: z.object({
+          attachmentId: z
+            .string()
+            .describe("The ID of the attachment containing the form"),
+          formFields: z
+            .array(z.string())
+            .describe("List of form fields to fill out"),
+        }),
+        execute: async ({ attachmentId, formFields }) => {
+          console.log("Filling out form with attachment ID:", attachmentId);
+          console.log("Form fields:", formFields);
+          return "Form filled out successfully";
+        },
+      }),
+    },
+    maxSteps: 3,
+    system: `
+    You are an email assistant that decides which action to take based on the email content.
+    If the email content contains a form, or contains a file that references a form or needing to fill it out, use the fillOutForm tool.
+    Otherwise, by default return a summary of the email.
+    `,
+    prompt: `
+    Email subject: ${subject}
+    Email body: ${messageText}
+    Attachments: ${attachments.map((a) => a.filename).join(", ")}
+    From this email, determine which action to take.
+    `,
+  });
+  console.log("COA:", text);
 };
